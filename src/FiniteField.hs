@@ -33,7 +33,7 @@ class (Num f, Integral f, IsInt f, KnownNat n) =>
   (.-) :: f -> f -> f
   a .- b = mod (a - b) (fromInt $ natVal @n Proxy)
   (.^) :: f -> f -> f
-  a .^ b | b < 0 = fromMaybe (error "number doesn't have inverse") (inverse (abs b))
+  a .^ b | b < 0 = fromMaybe (error "number doesn't have inverse") (inverse $ a .^ abs b)
          | otherwise = let m = (fromInt $ natVal @n Proxy)
                            power = fmap (fromInt . fromIntegral) . decompose . toInt $ b
                         in product (fmap go power) `mod` m
