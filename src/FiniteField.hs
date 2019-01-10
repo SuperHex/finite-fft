@@ -14,9 +14,7 @@ module FiniteField  where
 
 import           Data.Bits
 import qualified Data.IntMap.Strict as M
-import           Data.List          (sort)
-import           Data.Maybe         (fromMaybe)
-import           Data.Maybe         (fromJust)
+import           Data.Maybe         (fromJust, fromMaybe)
 import           Data.Proxy
 import           GHC.TypeLits
 
@@ -38,15 +36,14 @@ class (Num f, Integral f, IsInt f, KnownNat n) =>
   (.^) :: f -> f -> f
   a .^ b | b < 0 = fromMaybe (error "number doesn't have inverse") (inverse $ a .^ abs b)
          | otherwise = let power = fmap (fromInt . fromIntegral) . decompose . toInt $ b
-                        in go (M.insert 1 a M.empty) power
+                        in go (M.insert 0 a M.empty) power
     where go :: M.IntMap f -> [f] -> f
           go _ [] = fromInt 1
           go m (x : xs) = case M.lookup (fromInteger $ toInt x) m of
             Nothing -> case x of
-              0 -> go m xs
-              1 -> fromJust (M.lookup 1 m) .* go m xs
-              _ -> let subIdx = (x `div` 2)
-                       sub = a .^ subIdx
+              0 -> fromJust (M.lookup 0 m) .* go m xs
+              _ -> let subIdx = x - 1
+                       sub = go m [subIdx]
                        res = sub .* sub
                        newMap = M.insert (fromInteger . toInt $ subIdx) sub . M.insert (fromInteger . toInt $ x) res $ m
                         in res .* go newMap xs
@@ -80,7 +77,7 @@ extendGCD n1 n2 = go n1 n2 0 1 1 0
 
 decompose :: Integer -> [Int]
 decompose n | n <= 0    = []
-            | otherwise = (2 ^) <$> go n 0
+            | otherwise = go n 0
  where
   go x i | x == 0      = []
          | testBit x 0 = i : go (x `shiftR` 1) (i + 1)
