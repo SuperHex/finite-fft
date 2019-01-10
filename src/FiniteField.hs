@@ -12,10 +12,13 @@
 
 module FiniteField  where
 
-import GHC.TypeLits
-import Data.Proxy
-import Data.Bits
-import Data.Maybe (fromMaybe)
+import           Data.Bits
+import qualified Data.IntMap.Strict as M
+import           Data.List          (sort)
+import           Data.Maybe         (fromMaybe)
+import           Data.Maybe         (fromJust)
+import           Data.Proxy
+import           GHC.TypeLits
 
 newtype Poly = Poly { getPoly :: Integer }
   deriving (Num, Eq, Ord, Real, Enum, Integral, Show)
@@ -34,14 +37,20 @@ class (Num f, Integral f, IsInt f, KnownNat n) =>
   a .- b = mod (a - b) (fromInt $ natVal @n Proxy)
   (.^) :: f -> f -> f
   a .^ b | b < 0 = fromMaybe (error "number doesn't have inverse") (inverse $ a .^ abs b)
-         | otherwise = let m = (fromInt $ natVal @n Proxy)
-                           power = fmap (fromInt . fromIntegral) . decompose . toInt $ b
-                        in product (fmap go power) `mod` m
-    where go :: f -> f
-          go 0 = a
-          go 1 = a .* a
-          go n | even n = go (n `div` 2) .* go (n `div` 2)
-               | otherwise = a ^ (2 ^ n)
+         | otherwise = let power = fmap (fromInt . fromIntegral) . decompose . toInt $ b
+                        in go (M.insert 1 a M.empty) power
+    where go :: M.IntMap f -> [f] -> f
+          go _ [] = fromInt 1
+          go m (x : xs) = case M.lookup (fromInteger $ toInt x) m of
+            Nothing -> case x of
+              0 -> go m xs
+              1 -> fromJust (M.lookup 1 m) .* go m xs
+              _ -> let subIdx = (x `div` 2)
+                       sub = a .^ subIdx
+                       res = sub .* sub
+                       newMap = M.insert (fromInteger . toInt $ subIdx) sub . M.insert (fromInteger . toInt $ x) res $ m
+                        in res .* go newMap xs
+            (Just n) -> n .* go m xs
   inverse :: f -> Maybe f
   inverse p = let (d, x, _) = extendGCD p (fromInt $ natVal @n Proxy)
               in case d of
@@ -71,8 +80,9 @@ extendGCD n1 n2 = go n1 n2 0 1 1 0
 
 decompose :: Integer -> [Int]
 decompose n | n <= 0    = []
-            | otherwise = go n 0
+            | otherwise = (2 ^) <$> go n 0
  where
   go x i | x == 0      = []
          | testBit x 0 = i : go (x `shiftR` 1) (i + 1)
          | otherwise   = go (x `shiftR` 1) (i + 1)
+
