@@ -1,13 +1,17 @@
 {-# LANGUAGE DataKinds, FlexibleContexts #-}
+{-# LANGUAGE ExplicitForAll #-}
+{-# LANGUAGE TypeApplications #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 
 module FFT where
 
-import Control.Applicative
 import Data.Bits
 import FiniteField
+import GHC.TypeLits
+import Data.Proxy
 
-normalize :: a -> [a] -> [a]
-normalize x xs = if len .&. (len - 1) == 0
+padding :: a -> [a] -> [a]
+padding x xs = if len .&. (len - 1) == 0
   then xs
   else
     let pow = ceiling . logBase 2 . fromIntegral $ len
@@ -24,13 +28,13 @@ oddList (_ : x : xs) = x : oddList xs
 oddList (x     : []) = [x]
 oddList []           = []
 
-fftHelper :: (Finite f 41) => [f] -> f -> [f]
-fftHelper p root = if length p == 1
+fft :: forall n f . (KnownNat n, Finite f n) => f -> [f] -> [f]
+fft root p = if length p == 1
   then p
   else
     let
-      b   = fftHelper (evenList p) (root ^ 2)
-      c   = fftHelper (oddList p) (root ^ 2)
+      b   = fft (root .^ 2) (evenList p)
+      c   = fft (root .^ 2) (oddList p)
       out = zipWith (.+) b $ zipWith
         (.*)
         c
@@ -44,27 +48,23 @@ fftHelper p root = if length p == 1
     in
       out ++ out'
 
-ifft :: (Finite f 41) => [f] -> f -> [f]
-ifft l root =
+ifft :: forall n f . (KnownNat n, Finite f n) => f -> [f] -> [f]
+ifft root l =
   let len = fromIntegral $ length l
       matrix =
         [ [ root .^ (-i * j) | i <- [0 .. len - 1] ] | j <- [0 .. len - 1] ]
-  in  fmap (\row -> foldl1 (.+) $ zipWith (.*) row l) matrix
+  in  fmap
+        ( (`mod` fromInt (natVal @n Proxy))
+        . (`div` len)
+        . foldl1 (.+)
+        . flip (zipWith (.*)) l
+        )
+        matrix
 
-foo l root s =
-  let len = fromIntegral $ length l
-      matrix =
-        [ [ root ** (i * j) `mod` s | i <- [0 .. len - 1] ]
-        | j <- [0 .. len - 1]
-        ]
-  in  fmap (\row -> (`mod` s) . sum $ zipWith (*) row l) matrix
-
-
+-- actually no need to rearrange
 rearrange :: [a] -> [a]
 rearrange l = (\idx -> l !! idx) <$> go [0] (length l) 2
  where
   go x n k | k < n = let res = x ++ fmap (+ (n `div` k)) x in go res n (k * 2)
            | otherwise = x ++ fmap (+ 1) x
 
-fft :: (Finite f 41) => [f] -> f -> [f]
-fft p root = rearrange (fftHelper p root)
