@@ -7,61 +7,71 @@
 {-# LANGUAGE AllowAmbiguousTypes #-}
 {-# LANGUAGE ExplicitForAll #-}
 {-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE FunctionalDependencies #-}
+{-# LANGUAGE TypeFamilies #-}
 
 module FiniteField  where
 
+import           Control.Applicative
 import           Data.Bits
-import qualified Data.IntMap.Strict as M
-import           Data.Maybe         (fromJust, fromMaybe)
+import qualified Data.IntMap.Strict  as M
+import           Data.Maybe          (fromJust)
 import           Data.Proxy
 import           GHC.TypeLits
+import Data.Coerce (coerce)
 
-newtype Poly = Poly { getPoly :: Integer }
-  deriving (Num, Eq, Ord, Real, Enum, Integral, Show)
+newtype Field a = Field { getField :: a }
+  deriving (Eq, Ord)
 
-class IsInt n where
-  fromInt :: Integer -> n
-  toInt   :: n -> Integer
+instance (Show a) => Show (Field a) where
+  show = show . coerce @(Field a) @a
 
-class (Num f, Integral f, IsInt f, KnownNat n) =>
-      Finite (f :: *) (n :: Nat) | f -> n where
-  (.+) :: f -> f -> f
-  a .+ b = mod (a + b) (fromInt $ natVal @n Proxy)
-  (.*) :: f -> f -> f
-  a .* b = mod (a * b) (fromInt $ natVal @n Proxy)
-  (.-) :: f -> f -> f
-  a .- b = mod (a - b) (fromInt $ natVal @n Proxy)
-  (.^) :: f -> f -> f
-  a .^ b | b < 0 = fromMaybe (error "number doesn't have inverse") (inverse $ a .^ abs b)
-         | otherwise = let power = fmap (fromInt . fromIntegral) . decompose . toInt $ b
+instance Functor Field where
+  {-# INLINE fmap #-}
+  fmap = coerce
+
+instance Applicative Field where
+  {-# INLINE pure #-}
+  pure = coerce
+  {-# INLINE liftA2 #-}
+  liftA2 = coerce
+
+class (KnownNat n, Applicative f) => Finite (f :: * -> *) (n :: Nat) | f -> n where
+  (.%) :: (Integral a) => f a -> a -> f a
+  a .% b = (`mod` b) <$> a
+  (.+) :: (Num a, Integral a) => f a -> f a -> f a
+  a .+ b = liftA2 (+) a b .% fromIntegral (natVal @n Proxy)
+  (.*) :: (Num a, Integral a) => f a -> f a -> f a
+  a .* b = liftA2 (*) a b .% fromIntegral (natVal @n Proxy)
+  (.-) :: (Num a, Integral a) => f a -> f a -> f a
+  a .- b = liftA2 (-) a b .% fromIntegral (natVal @n Proxy)
+  (.^) :: (Num a, Integral a) => f a -> Int -> f a
+  a .^ b | b < 0 = (inverse $ a .^ abs b)
+         | otherwise = let power = decompose (fromIntegral b)
                         in go (M.insert 0 a M.empty) power
-    where go :: M.IntMap f -> [f] -> f
-          go _ [] = fromInt 1
-          go m (x : xs) = case M.lookup (fromInteger $ toInt x) m of
+    where go :: (Num a, Integral a) => M.IntMap (f a) -> [Int] -> f a
+          go _ [] = pure 1
+          go m (x : xs) = case M.lookup x m of
             Nothing -> case x of
               0 -> fromJust (M.lookup 0 m) .* go m xs
               _ -> let subIdx = x - 1
                        sub = go m [subIdx]
                        res = sub .* sub
-                       newMap = M.insert (fromInteger . toInt $ subIdx) sub . M.insert (fromInteger . toInt $ x) res $ m
+                       newMap = M.insert subIdx sub . M.insert x res $ m
                         in res .* go newMap xs
             (Just n) -> n .* go m xs
-  inverse :: f -> Maybe f
-  inverse p = let (d, x, _) = extendGCD p (fromInt $ natVal @n Proxy)
-              in case d of
-                   1 -> Just $ x `mod` fromInt (natVal @n Proxy)
-                   _ -> Nothing
+  inverse :: (Num a, Integral a) => f a -> f a
+  inverse p = let gcd = liftA2 extendGCD p (pure . fromIntegral $ natVal @n Proxy)
+              in fmap (\(d, x, _) -> case d of
+                          1 -> x
+                          _ -> error "no inverse exist") gcd
 
-instance IsInt Poly where
-  fromInt= Poly
-  toInt  = getPoly
 
-instance Finite Poly 41
 
 -- TODO: implement faster binary GCD algorithm described here:
 -- https://www.di-mgt.com.au/euclidean.html
+{-# SPECIALIZE extendGCD :: Int -> Int -> (Int, Int, Int) #-}
+{-# SPECIALIZE extendGCD :: Integer -> Integer -> (Integer, Integer, Integer) #-}
 extendGCD :: (Integral a) => a -> a -> (a, a, a)
 extendGCD n1 n2 = go n1 n2 0 1 1 0
  where
@@ -75,7 +85,8 @@ extendGCD n1 n2 = go n1 n2 0 1 1 0
           y = y2 - q * y1
       in  go b r x x1 y y1
 
-decompose :: Integer -> [Int]
+{-# SPECIALIZE decompose :: Integer -> [Int] #-}
+decompose :: (Integral a) => Integer -> [a]
 decompose n | n <= 0    = []
             | otherwise = go n 0
  where

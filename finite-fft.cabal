@@ -4,7 +4,7 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: 201fc9bf660a7612f102fbd2aa17c8af80647f4a0acebb1ec8fc2b7a715fcdb3
+-- hash: 4496267574291eea0ba67561db0977bad8b484e6140b3d018ab345bc4e171c2e
 
 name:           finite-fft
 version:        0.1.0.0
@@ -38,6 +38,8 @@ library
   build-depends:
       base >=4.7 && <5
     , containers >=0.5.0
+    , parallel >=3.0
+    , vector >=0.12
   default-language: Haskell2010
 
 executable finite-fft-exe
@@ -52,6 +54,8 @@ executable finite-fft-exe
       base >=4.7 && <5
     , containers >=0.5.0
     , finite-fft
+    , parallel >=3.0
+    , vector >=0.12
   default-language: Haskell2010
 
 test-suite finite-fft-test
@@ -67,4 +71,6 @@ test-suite finite-fft-test
       base >=4.7 && <5
     , containers >=0.5.0
     , finite-fft
+    , parallel >=3.0
+    , vector >=0.12
   default-language: Haskell2010
